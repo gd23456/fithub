@@ -82,7 +82,7 @@ SET FOREIGN_KEY_CHECKS=1;
 
 -- Insert initial data with default admin user
 INSERT INTO users (username, email, password_hash, is_admin) 
-VALUES ('admin', 'admin@fithub.com', 'pbkdf2:sha256:260000$IyDWRElNtl21A1tw$146e36c8ac78588b2db6537a5f450819eb77c65981287fbe0c1512b462753c3e', TRUE);
+VALUES ('admin', 'admin@fithub.com', 'pbkdf2:sha256:260000$FStknCXwpiZdn7xe$1d1bb880147a03cdda37914b8a5973478689056df039752caff05036b737a183', TRUE);
 
 -- Insert membership plans
 INSERT INTO membership_plans (plan_name, duration_months, price) VALUES

@@ -25,6 +25,11 @@ app.config['SQLALCHEMY_POOL_RECYCLE'] = 1800  # Recycle connections after 30 min
 
 db = SQLAlchemy(app)
 
+@app.before_first_request
+def initialize_database():
+    from init_db import init_db
+    init_db()
+
 @app.before_request
 def before_request():
     if not db.engine.pool._pool:
