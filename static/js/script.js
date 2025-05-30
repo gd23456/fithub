@@ -5,6 +5,21 @@ document.addEventListener('DOMContentLoaded', function() {
         return new bootstrap.Tooltip(tooltipTriggerEl);
     });
 
+    // Password toggle functionality
+    const togglePassword = document.getElementById('togglePassword');
+    if (togglePassword) {
+        togglePassword.addEventListener('click', function() {
+            const password = document.getElementById('password');
+            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+            password.setAttribute('type', type);
+            
+            // Toggle the eye icon
+            const icon = this.querySelector('i');
+            icon.classList.toggle('bi-eye');
+            icon.classList.toggle('bi-eye-slash');
+        });
+    }
+
     // Form validation
     const forms = document.querySelectorAll('.needs-validation');
     Array.from(forms).forEach(form => {
@@ -42,6 +57,25 @@ document.addEventListener('DOMContentLoaded', function() {
             alert.classList.remove('show');
             setTimeout(() => alert.remove(), 150);
         }, 5000);
+    });
+
+    // Password toggle functionality
+    const togglePasswordButtons = document.querySelectorAll('.toggle-password');
+    togglePasswordButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const input = this.previousElementSibling;
+            const icon = this.querySelector('i');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.classList.remove('bi-eye');
+                icon.classList.add('bi-eye-slash');
+            } else {
+                input.type = 'password';
+                icon.classList.remove('bi-eye-slash');
+                icon.classList.add('bi-eye');
+            }
+        });
     });
 });
 
@@ -169,3 +203,19 @@ const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-tog
 const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
     return new bootstrap.Tooltip(tooltipTriggerEl);
 });
+
+// Member plans view
+function renderMemberPlans(plans) {
+    const plansTable = document.getElementById('plansTable');
+    if (plansTable) {
+        plansTable.innerHTML = plans.map(plan => `
+            <tr>
+                <td>${plan.plan_name}</td>
+                <td>${plan.start_date}</td>
+                <td>${plan.end_date || 'N/A'}</td>
+                <td>₹${plan.price.toFixed(2)}</td>
+                <td>${plan.duration} months</td>
+            </tr>
+        `).join('');
+    }
+}

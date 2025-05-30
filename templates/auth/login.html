@@ -17,7 +17,12 @@
                     </div>
                     <div class="mb-3">
                         <label for="password" class="form-label">Password</label>
-                        <input type="password" class="form-control" id="password" name="password" required>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="password" name="password" required>
+                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" id="remember" name="remember">
@@ -33,4 +38,8 @@
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
 {% endblock %}

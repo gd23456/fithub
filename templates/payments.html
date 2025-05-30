@@ -7,7 +7,7 @@
     <h2>Payments</h2>
     <div>
         <a href="{{ url_for('export_payments') }}" class="btn btn-success me-2">
-            <i class="bi bi-download"></i> Export to CSV
+            <i class="bi bi-download"></i> Export to PDF
         </a>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#recordPaymentModal">
             <i class="bi bi-plus"></i> Record Payment
@@ -25,11 +25,11 @@
                 <div class="row">
                     <div class="col-md-6">
                         <h5>Total Revenue</h5>
-                        <h3>${{ "%.2f"|format(total_payments) }}</h3>
+                        <h3>₹{{ "%.2f"|format(total_payments) }}</h3>
                     </div>
                     <div class="col-md-6">
                         <h5>This Month</h5>
-                        <h3>${{ "%.2f"|format(monthly_payments) }}</h3>
+                        <h3>₹{{ "%.2f"|format(monthly_payments) }}</h3>
                     </div>
                 </div>
             </div>
@@ -79,7 +79,7 @@
                     <tr>
                         <td>{{ payment.payment_id }}</td>
                         <td>{{ payment.member.name }}</td>
-                        <td>${{ "%.2f"|format(payment.amount) }}</td>
+                        <td>₹{{ "%.2f"|format(payment.amount) }}</td>
                         <td>{{ payment.payment_date.strftime('%Y-%m-%d') }}</td>
                         <td>{{ payment.payment_method }}</td>
                         <td>
@@ -222,7 +222,7 @@ function viewPaymentDetails(paymentId) {
                     </div>
                     <div class="row mb-2">
                         <div class="col-4">Amount:</div>
-                        <div class="col-8">$${data.amount.toFixed(2)}</div>
+                        <div class="col-8">₹${data.amount.toFixed(2)}</div>
                     </div>
                     <div class="row mb-2">
                         <div class="col-4">Date:</div>

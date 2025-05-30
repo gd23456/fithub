@@ -31,22 +31,71 @@
                             <input type="tel" class="form-control" id="phone" name="phone">
                         </div>
                     </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="gender" class="form-label">Gender</label>
+                            <select class="form-select" id="gender" name="gender" required>
+                                <option value="Male">Male</option>
+                                <option value="Female">Female</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="plan_id" class="form-label">Membership Plan</label>
+                            <select class="form-select" id="plan_id" name="plan_id" required onchange="updatePaymentAmount()">
+                                {% for plan in plans %}
+                                <option value="{{ plan.plan_id }}" data-price="{{ plan.price }}">{{ plan.plan_name }} - ₹{{ "%.2f"|format(plan.price) }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="payment_method" class="form-label">Payment Method</label>
+                            <select class="form-select" id="payment_method" name="payment_method" required>
+                                <option value="Cash">Cash</option>
+                                <option value="Card">Card</option>
+                                <option value="UPI">UPI</option>
+                                <option value="Online">Online</option>
+                            </select>
+                        </div>
+                    </div>
                     <div class="mb-3">
-                        <label for="gender" class="form-label">Gender</label>
-                        <select class="form-select" id="gender" name="gender" required>
-                            <option value="Male">Male</option>
-                            <option value="Female">Female</option>
-                            <option value="Other">Other</option>
-                        </select>
+                        <label class="form-label">Amount to Pay</label>
+                        <div class="form-control-plaintext" id="payment_amount"></div>
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
                             <label for="password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="password" name="password" 
+                                    pattern="^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$"
+                                    title="Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character"
+                                    required>
+                                <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <div id="passwordRequirements" class="form-text">
+                                Password must contain:
+                                <ul class="list-unstyled small">
+                                    <li id="length"><i class="bi bi-x-circle text-danger"></i> At least 8 characters</li>
+                                    <li id="uppercase"><i class="bi bi-x-circle text-danger"></i> One uppercase letter</li>
+                                    <li id="lowercase"><i class="bi bi-x-circle text-danger"></i> One lowercase letter</li>
+                                    <li id="number"><i class="bi bi-x-circle text-danger"></i> One number</li>
+                                    <li id="special"><i class="bi bi-x-circle text-danger"></i> One special character</li>
+                                </ul>
+                            </div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label for="confirm_password" class="form-label">Confirm Password</label>
-                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                            <div class="input-group">
+                                <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                                <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPassword">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <div id="passwordMatch" class="form-text"></div>
                         </div>
                     </div>
                     <button type="submit" class="btn btn-primary w-100">Register</button>
@@ -62,6 +111,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{{ url_for('static', filename='js/auth.js') }}"></script>
 <script>
 document.getElementById('password').addEventListener('input', validatePassword);
 document.getElementById('confirm_password').addEventListener('input', validatePassword);
@@ -77,6 +127,13 @@ function validatePassword() {
             confirm.setCustomValidity('');
         }
     }
+}
+
+function updatePaymentAmount() {
+    const planSelect = document.getElementById('plan_id');
+    const selectedOption = planSelect.options[planSelect.selectedIndex];
+    const price = selectedOption.getAttribute('data-price');
+    document.getElementById('payment_amount').textContent = `₹${parseFloat(price).toFixed(2)}`;
 }
 </script>
 {% endblock %}

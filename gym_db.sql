@@ -1,5 +1,6 @@
 SET FOREIGN_KEY_CHECKS=0;
 
+DROP DATABASE IF EXISTS gym_db;
 CREATE DATABASE gym_db;
 USE gym_db;
 
@@ -79,14 +80,15 @@ CREATE TABLE payments (
 
 SET FOREIGN_KEY_CHECKS=1;
 
--- Insert initial data
+-- Insert initial data with default admin user
 INSERT INTO users (username, email, password_hash, is_admin) 
-VALUES ('admin', 'admin@fithub.com', 'pbkdf2:sha256:600000$dw99OqKPjk1o4Gxt$5eea6e515de97968c75f7253fc832c6a34746d5e97665df60c947d529dc06217', TRUE);
+VALUES ('admin', 'admin@fithub.com', 'pbkdf2:sha256:260000$IyDWRElNtl21A1tw$146e36c8ac78588b2db6537a5f450819eb77c65981287fbe0c1512b462753c3e', TRUE);
 
+-- Insert membership plans
 INSERT INTO membership_plans (plan_name, duration_months, price) VALUES
-('Basic Monthly', 1, 50.00),
-('Standard Quarterly', 3, 135.00),
-('Premium Annual', 12, 500.00);
+('Basic Monthly', 1, 1499.00),
+('Standard Quarterly', 3, 3999.00),
+('Premium Annual', 12, 14999.00);
 
 INSERT INTO trainers (name, specialization, email, phone) VALUES
 ('John Smith', 'Weight Training', 'john@fithub.com', '(555) 123-4567'),

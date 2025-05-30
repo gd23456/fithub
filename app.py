@@ -4,6 +4,11 @@ from flask_login import LoginManager, UserMixin, login_user, login_required, log
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from sqlalchemy import or_, and_, func
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
 import os
 import csv
 import io
@@ -154,11 +159,23 @@ def login():
         return redirect(url_for('index'))
     
     if request.method == 'POST':
-        user = User.query.filter_by(email=request.form['email']).first()
-        if user and user.check_password(request.form['password']):
+        email = request.form['email']
+        password = request.form['password']
+        app.logger.info(f'Login attempt for email: {email}')
+        
+        user = User.query.filter_by(email=email).first()
+        if not user:
+            app.logger.warning(f'Login failed - no user found for email: {email}')
+            flash('Invalid email or password', 'danger')
+            return render_template('auth/login.html')
+            
+        if user and user.check_password(password):
             login_user(user, remember=request.form.get('remember', False))
+            app.logger.info(f'Successful login for user: {email} (Admin: {user.is_admin})')
             next_page = request.args.get('next')
             return redirect(next_page or url_for('index'))
+        
+        app.logger.warning(f'Login failed - invalid password for email: {email}')
         flash('Invalid email or password', 'danger')
     return render_template('auth/login.html')
 
@@ -167,14 +184,34 @@ def register():
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     
+    plans = MembershipPlan.query.all()
+    
     if request.method == 'POST':
         if User.query.filter_by(email=request.form['email']).first():
             flash('Email already registered', 'danger')
-            return render_template('auth/register.html')
+            return render_template('auth/register.html', plans=plans)
         
         if request.form['password'] != request.form['confirm_password']:
             flash('Passwords do not match', 'danger')
-            return render_template('auth/register.html')
+            return render_template('auth/register.html', plans=plans)
+        
+        # Validate password requirements
+        password = request.form['password']
+        if len(password) < 8:
+            flash('Password must be at least 8 characters long', 'danger')
+            return render_template('auth/register.html', plans=plans)
+        if not any(c.isupper() for c in password):
+            flash('Password must contain at least one uppercase letter', 'danger')
+            return render_template('auth/register.html', plans=plans)
+        if not any(c.islower() for c in password):
+            flash('Password must contain at least one lowercase letter', 'danger')
+            return render_template('auth/register.html', plans=plans)
+        if not any(c.isdigit() for c in password):
+            flash('Password must contain at least one number', 'danger')
+            return render_template('auth/register.html', plans=plans)
+        if not any(c in '@$!%*?&' for c in password):
+            flash('Password must contain at least one special character (@$!%*?&)', 'danger')
+            return render_template('auth/register.html', plans=plans)
         
         user = User(
             username=request.form['username'],
@@ -193,7 +230,31 @@ def register():
         try:
             db.session.add(user)
             db.session.add(member)
+            db.session.commit()  # Commit first to get member_id
+            
+            # Now create the membership plan
+            plan = MembershipPlan.query.get_or_404(request.form['plan_id'])
+            start_date = datetime.now()
+            end_date = start_date + timedelta(days=30 * plan.duration_months)
+            
+            member_plan = MemberPlan(
+                member_id=member.member_id,
+                plan_id=request.form['plan_id'],
+                start_date=start_date,
+                end_date=end_date.date()
+            )
+            
+            # Record the payment
+            payment = Payment(
+                member_id=member.member_id,
+                amount=plan.price,
+                payment_method=request.form['payment_method']
+            )
+            
+            db.session.add(member_plan)
+            db.session.add(payment)
             db.session.commit()
+            
             flash('Registration successful! Please login.', 'success')
             return redirect(url_for('login'))
         except Exception as e:
@@ -201,7 +262,7 @@ def register():
             flash('Registration failed. Please try again.', 'danger')
             app.logger.error(f'Registration error: {str(e)}')
     
-    return render_template('auth/register.html')
+    return render_template('auth/register.html', plans=plans)
 
 @app.route('/logout')
 @login_required
@@ -219,6 +280,10 @@ def members():
 @app.route('/add_member', methods=['POST'])
 @login_required
 def add_member():
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         member = Member(
             name=request.form['name'],
@@ -237,6 +302,10 @@ def add_member():
 @app.route('/members/<int:id>/delete', methods=['GET'])
 @login_required
 def delete_member(id):
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         member = Member.query.get_or_404(id)
         db.session.delete(member)
@@ -250,6 +319,10 @@ def delete_member(id):
 @app.route('/members/<int:id>/edit', methods=['POST'])
 @login_required
 def edit_member(id):
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         member = Member.query.get_or_404(id)
         member.name = request.form['name']
@@ -264,7 +337,12 @@ def edit_member(id):
     return redirect(url_for('members'))
 
 @app.route('/members/<int:member_id>/assign_plan', methods=['POST'])
+@login_required
 def assign_plan(member_id):
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         # Calculate end date based on plan duration
         plan = MembershipPlan.query.get_or_404(request.form['plan_id'])
@@ -290,20 +368,29 @@ def assign_plan(member_id):
         db.session.add(payment)
         db.session.commit()
         
-        flash('Plan assigned and payment recorded successfully!', 'success')
+        flash('Plan updated and payment recorded successfully!', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error assigning plan: {str(e)}', 'danger')
+        flash(f'Error updating plan: {str(e)}', 'danger')
     return redirect(url_for('members'))
 
 @app.route('/membership_plans')
 @login_required
 def membership_plans():
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+    
     plans = MembershipPlan.query.all()
     return render_template('membership.html', plans=plans)
 
 @app.route('/add_plan', methods=['POST'])
+@login_required
 def add_plan():
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         plan = MembershipPlan(
             plan_name=request.form['plan_name'],
@@ -319,7 +406,12 @@ def add_plan():
     return redirect(url_for('membership_plans'))
 
 @app.route('/plans/<int:id>/delete', methods=['GET'])
+@login_required
 def delete_plan(id):
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+    
     try:
         plan = MembershipPlan.query.get_or_404(id)
         db.session.delete(plan)
@@ -331,7 +423,12 @@ def delete_plan(id):
     return redirect(url_for('membership_plans'))
 
 @app.route('/plans/<int:id>/edit', methods=['POST'])
+@login_required
 def edit_plan(id):
+    if not current_user.is_admin:
+        flash('Access denied. Admin privileges required.', 'danger')
+        return redirect(url_for('index'))
+        
     try:
         plan = MembershipPlan.query.get_or_404(id)
         plan.plan_name = request.form['plan_name']
@@ -385,7 +482,11 @@ def delete_class(id):
 def view_class(id):
     session = Session.query.get_or_404(id)
     attendees = Attendance.query.filter_by(session_id=id).join(Member).all()
-    return render_template('class_details.html', session=session, attendees=attendees)
+    today = datetime.now().date()
+    return render_template('class_details.html', 
+                         session=session, 
+                         attendees=attendees,
+                         today=today)
 
 @app.route('/classes/<int:id>/edit', methods=['POST'])
 def edit_class(id):
@@ -401,6 +502,42 @@ def edit_class(id):
     except Exception as e:
         db.session.rollback()
         flash(f'Error updating class: {str(e)}', 'danger')
+    return redirect(url_for('classes'))
+
+@app.route('/classes/<int:id>/register', methods=['POST'])
+@login_required
+def register_for_class(id):
+    try:
+        session = Session.query.get_or_404(id)
+        
+        # Skip membership check for admin users
+        if not current_user.is_admin:
+            # Check if member has active membership for the class date
+            if not has_active_membership(current_user.member.member_id, session.session_date):
+                flash('Error: You need an active membership plan to register for classes', 'danger')
+                return redirect(url_for('classes'))
+        
+        # Check if already registered
+        existing_attendance = Attendance.query.filter_by(
+            member_id=current_user.member.member_id if hasattr(current_user, 'member') else None,
+            session_id=id
+        ).first()
+        
+        if existing_attendance:
+            flash('You are already registered for this class', 'warning')
+        # Create attendance record (default attended=True will be set when class occurs)
+        attendance = Attendance(
+            member_id=current_user.member.member_id,
+            session_id=id,
+            date=session.session_date
+        )
+        db.session.add(attendance)
+        db.session.commit()
+        flash('Successfully registered for the class!', 'success')
+        
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error registering for class: {str(e)}', 'danger')
     return redirect(url_for('classes'))
 
 @app.route('/trainers')
@@ -467,15 +604,20 @@ def attendance():
 def has_active_membership(member_id, date=None):
     if date is None:
         date = datetime.now().date()
+    elif isinstance(date, datetime):
+        date = date.date()
     
     active_plan = MemberPlan.query.filter(
-        MemberPlan.member_id == member_id,
-        MemberPlan.start_date <= date,
+        MemberPlan.member_id == member_id
+    ).filter(
+        func.date(MemberPlan.start_date) <= date
+    ).filter(
         or_(
             MemberPlan.end_date >= date,
-            MemberPlan.end_date == None
+            MemberPlan.end_date.is_(None)
         )
     ).first()
+    
     return active_plan is not None
 
 @app.route('/record_attendance', methods=['POST'])
@@ -620,28 +762,64 @@ def export_attendance():
         records = db.session.query(
             Attendance, Member, Session
         ).join(Member).join(Session).all()
-        
-        # Create CSV content
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['Date', 'Member Name', 'Class Name', 'Status'])
-        
+
+        # Create a PDF buffer
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        elements = []
+
+        # Define styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            spaceAfter=30
+        )
+
+        # Add title
+        elements.append(Paragraph("Attendance Records", title_style))
+
+        # Create table data
+        data = [['Date', 'Member Name', 'Class Name', 'Status']]  # Header row
         for attendance, member, session in records:
-            writer.writerow([
+            data.append([
                 attendance.date.strftime('%Y-%m-%d'),
                 member.name,
                 session.session_name,
                 'Present' if attendance.attended else 'Absent'
             ])
+
+        # Create table
+        table = Table(data, colWidths=[1.5*inch, 2*inch, 2*inch, 1*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+        ]))
+        elements.append(table)
+
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
         
-        # Create response
-        output.seek(0)
-        app.logger.info(f'Attendance records exported successfully')
+        app.logger.info(f'Attendance records exported successfully as PDF')
         return Response(
-            output.getvalue(),
-            mimetype='text/csv',
+            buffer.getvalue(),
+            mimetype='application/pdf',
             headers={
-                'Content-Disposition': 'attachment; filename=attendance_records.csv'
+                'Content-Disposition': 'attachment; filename=attendance_records.pdf'
             }
         )
     except Exception as e:
@@ -654,28 +832,68 @@ def export_payments():
     try:
         # Query all payment records with member data
         records = Payment.query.join(Member).all()
-        
-        # Create CSV content
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(['Date', 'Member Name', 'Amount', 'Payment Method'])
-        
+
+        # Create a PDF buffer
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter)
+        elements = []
+
+        # Define styles
+        styles = getSampleStyleSheet()
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=16,
+            spaceAfter=30
+        )
+
+        # Add title
+        elements.append(Paragraph("Payment Records", title_style))
+
+        # Create table data
+        data = [['Date', 'Member Name', 'Amount', 'Payment Method']]  # Header row
         for payment in records:
-            writer.writerow([
+            data.append([
                 payment.payment_date.strftime('%Y-%m-%d'),
                 payment.member.name,
-                float(payment.amount),
+                f'${float(payment.amount):.2f}',
                 payment.payment_method
             ])
+
+        # Create table
+        table = Table(data, colWidths=[1.5*inch, 2*inch, 1.5*inch, 1.5*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('TEXTCOLOR', (0, 1), (-1, -1), colors.black),
+            ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+            ('FONTSIZE', (0, 1), (-1, -1), 10),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey])
+        ]))
+        elements.append(table)
+
+        # Add total at the bottom
+        total = sum(float(payment.amount) for payment in records)
+        elements.append(Paragraph(f"<br/><br/>Total Amount: ${total:.2f}", styles['Normal']))
+
+        # Build PDF
+        doc.build(elements)
+        buffer.seek(0)
         
-        # Create response
-        output.seek(0)
-        app.logger.info(f'Payment records exported successfully')
+        app.logger.info(f'Payment records exported successfully as PDF')
         return Response(
-            output.getvalue(),
-            mimetype='text/csv',
+            buffer.getvalue(),
+            mimetype='application/pdf',
             headers={
-                'Content-Disposition': 'attachment; filename=payment_records.csv'
+                'Content-Disposition': 'attachment; filename=payment_records.pdf'
             }
         )
     except Exception as e:
@@ -685,7 +903,11 @@ def export_payments():
 
 # API Endpoints
 @app.route('/api/member_plans/<int:member_id>')
+@login_required
 def get_member_plans(member_id):
+    if not current_user.is_admin and current_user.member.member_id != member_id:
+        return jsonify({"error": "Access denied"}), 403
+        
     plans = db.session.query(MemberPlan, MembershipPlan)\
         .join(MembershipPlan, MemberPlan.plan_id == MembershipPlan.plan_id)\
         .filter(MemberPlan.member_id == member_id)\

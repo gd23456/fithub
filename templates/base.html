@@ -24,9 +24,11 @@
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('members') }}">Members</a>
                     </li>
+                    {% if current_user.is_admin %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('membership_plans') }}">Membership Plans</a>
                     </li>
+                    {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('classes') }}">Classes</a>
                     </li>
